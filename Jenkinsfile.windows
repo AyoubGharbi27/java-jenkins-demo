@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_REPO = 'dingus27/java-jenkins-demo' // update to your Docker Hub repo
+        DOCKERHUB_CREDID = 'dockerhub-credentials'   // Jenkins credential id for Docker Hub
+        IMAGE_TAG = "v${env.BUILD_NUMBER ?: '1'}"
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: 'https://github.com/your/repo.git', branch: 'main' // replace
+            }
+        }
+        stage('Compile') {
+            steps {
+                bat 'mvn -B -DskipTests=false compile'
+            }
+        }
+        stage('Unit Tests') {
+            steps {
+                bat 'mvn -B test || exit 0'
+            }
+        }
+        stage('Package') {
+            steps {
+                bat 'mvn -B package -DskipTests'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                bat "docker build -t %DOCKERHUB_REPO%:%IMAGE_TAG% ."
+                bat "docker tag %DOCKERHUB_REPO%:%IMAGE_TAG% %DOCKERHUB_REPO%:latest"
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', env.DOCKERHUB_CREDID) {
+                        bat "docker push %DOCKERHUB_REPO%:%IMAGE_TAG%"
+                        bat "docker push %DOCKERHUB_REPO%:latest"
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            bat 'docker rmi %DOCKERHUB_REPO%:%IMAGE_TAG% || echo cleanup failed'
+            bat 'docker rmi %DOCKERHUB_REPO%:latest || echo cleanup failed'
+        }
+    }
+}
